@@ -19,17 +19,17 @@ fn main() -> Result<()> {
                 .about("The github account to search though")
                 .takes_value(true),
         )
-        .arg(
-            Arg::new("limit")
-                .short('l')
-                .long("limit")
-                .about("The number of repositories to list default=100")
-                .takes_value(true),
-        )
+        // .arg(
+        //     Arg::new("limit")
+        //         .short('l')
+        //         .long("limit")
+        //         .about("The number of repositories to list default=100")
+        //         .takes_value(true),
+        // )
         .arg(Arg::new("git args").multiple_values(true))
         .get_matches();
 
-    let git_args = match matches.values_of("git") {
+    let git_args = match matches.values_of("git args") {
         Some(args) => args.collect::<Vec<_>>(),
         None => Vec::new(),
     };
