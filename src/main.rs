@@ -7,7 +7,7 @@ use std::process::Command;
 
 fn main() -> Result<()> {
     let matches = App::new("github-repo-clone")
-        .version("0.1.0")
+        .version("0.1.1")
         .author("Jared Moulton <jaredmoulton3@gmail.com>")
         .about("Scripts the usage of the github cli to make cloning slightly more convenient")
         .setting(clap::AppSettings::TrailingVarArg)
@@ -19,22 +19,41 @@ fn main() -> Result<()> {
                 .about("The github account to search though")
                 .takes_value(true),
         )
-        // .arg(
-        //     Arg::new("limit")
-        //         .short('l')
-        //         .long("limit")
-        //         .about("The number of repositories to list default=100")
-        //         .takes_value(true),
-        // )
+        .arg(
+            Arg::new("limit")
+                .short('l')
+                .long("limit")
+                .about("The number of repositories to list default=100")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::new("public")
+                .long("public")
+                .about("Show only public repositories"),
+        )
+        .arg(
+            Arg::new("private")
+                .long("private")
+                .about("Show only private repositories"),
+        )
         .arg(Arg::new("git args").multiple_values(true))
         .get_matches();
 
-    let git_args = match matches.values_of("git args") {
+    let args_git = match matches.values_of("git args") {
         Some(args) => args.collect::<Vec<_>>(),
         None => Vec::new(),
     };
-
     let arg_account = matches.value_of("account").unwrap_or("");
+    let arg_public = if matches.is_present("public") {
+        "--public".to_string()
+    } else {
+        "".to_string()
+    };
+    let arg_private = if matches.is_present("private") {
+        "--private".to_string()
+    } else {
+        "".to_string()
+    };
     let arg_limit = matches.value_of("limit").unwrap_or("100");
     let arg_limit = vec!["-L", arg_limit];
 
@@ -50,9 +69,16 @@ fn main() -> Result<()> {
     let item_reader = SkimItemReader::default();
 
     // Commands
+    let temp_args = vec![arg_account, &arg_public, &arg_private];
+    let mut list_args: Vec<&str> = Vec::new();
+    for arg in &temp_args {
+        if !arg.is_empty() {
+            list_args.push(arg);
+        }
+    }
     let gh_output = Command::new("gh")
         .args(&["repo", "list"])
-        .arg(arg_account)
+        .args(list_args)
         .args(arg_limit)
         .output()
         .expect("Couldn't execute gh binary with args");
@@ -73,7 +99,7 @@ fn main() -> Result<()> {
         Command::new("gh")
             .args(&["repo", "clone", account_repo, repo])
             .arg("--")
-            .args(&git_args)
+            .args(&args_git)
             .output()
             .expect("Couldn't execute gh binary with args");
     }
