@@ -5,6 +5,22 @@ use std::io::Cursor;
 use std::io::Result;
 use std::process::Command;
 
+#[macro_use]
+extern crate serde_derive;
+extern crate serde;
+extern crate serde_json;
+
+#[derive(Serialize, Deserialize, Debug)]
+struct GhResponse {
+    name: String,
+    name_with_owner: String,
+    updated_at: String,
+    is_private: bool,
+    is_archived: bool,
+    is_fork: bool,
+    is_empty: bool,
+}
+
 fn main() -> Result<()> {
     let matches = App::new("github-repo-clone")
         .version("0.1.1")
