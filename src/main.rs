@@ -65,7 +65,7 @@ impl Default for FilterFlags {
 fn main() -> Result<(), std::io::Error> {
     // Create the app with arguments
     let matches = App::new("github-repo-clone")
-        .version("0.1.1")
+        .version("0.1.2")
         .author("Jared Moulton <jaredmoulton3@gmail.com>")
         .about("Scripts the usage of the github cli to make cloning slightly more convenient")
         .arg(
@@ -73,7 +73,8 @@ fn main() -> Result<(), std::io::Error> {
                 .short('o')
                 .long("owner")
                 .about("The github owner to search though")
-                .required(false),
+                .required(false)
+                .takes_value(true),
         )
         .arg(
             Arg::new("limit")
@@ -161,7 +162,7 @@ fn main() -> Result<(), std::io::Error> {
         let re_repo = Regex::new(r"/[^\s]+").unwrap();
         let owner_repo = &re_owner_repo.captures(&item.output()).unwrap()[0].to_string();
         let repo = &re_repo.captures(owner_repo).unwrap()[0].to_string()[1..];
-        // Get the gir args
+        // Get the git args
         let args_git = match matches.values_of("git args") {
             Some(args) => args.collect::<Vec<_>>(),
             None => Vec::new(),
@@ -171,8 +172,7 @@ fn main() -> Result<(), std::io::Error> {
             .args(&["repo", "clone", owner_repo, repo])
             .arg("--")
             .args(&args_git)
-            .output()
-            .expect("Couldn't execute gh binary with args");
+            .output()?;
     }
     Ok(())
 }

@@ -6,10 +6,10 @@ leverages the power of fuzzy finding with the github cli
 # Usage
 
 github-repo-clone depends on the github cli being installed on the
-system. The default account to search through is your own if no account
-flag is provided.
+system. The default owner account to search through is your own if no
+owner flag is provided.
 
-![grc-gif](images/grc-gif.gif)
+![grc-gif](images/grc-gif-v0.1.2.gif)
 
 ## Installation
 
