@@ -78,6 +78,14 @@ fn main() -> Result<(), std::io::Error> {
                 .takes_value(true),
         )
         .arg(
+            Arg::new("path")
+                .short('p')
+                .long("path")
+                .about("The full path to clone into (must include repository name")
+                .required(false)
+                .takes_value(true),
+        )
+        .arg(
             Arg::new("limit")
                 .short('l')
                 .long("limit")
@@ -98,7 +106,7 @@ fn main() -> Result<(), std::io::Error> {
         .arg(Arg::new("git args").multiple_values(true))
         .get_matches();
 
-    // Parse the arguments
+    // Parse the filter flags
     let mut filter_flags = FilterFlags::default();
     if matches.is_present("public") {
         filter_flags.only_public = true;
@@ -163,14 +171,37 @@ fn main() -> Result<(), std::io::Error> {
         let re_repo = Regex::new(r"/[^\s]+").unwrap();
         let owner_repo = &re_owner_repo.captures(&item.output()).unwrap()[0].to_string();
         let repo = &re_repo.captures(owner_repo).unwrap()[0].to_string()[1..];
+
         // Get the git args
         let args_git = match matches.values_of("git args") {
             Some(args) => args.collect::<Vec<_>>(),
             None => Vec::new(),
         };
-        println!("cloning into {}", repo);
+
+        // Parse the path flag
+        //
+        // This is a closure to check if the directory already exists
+        // I'm using this because I can't figure out how to use if statements inside of the match
+        // arm
+        let check_dir = |path: &str| {
+            if std::path::Path::new(&path).is_dir() {
+                format!("{}/{}", path.trim_end_matches('/'), repo)
+            } else {
+                path.to_owned()
+            }
+        };
+        let path = match matches.value_of("path") {
+            Some(path) => check_dir(path),
+            None => "".to_owned(),
+        };
+        if !path.is_empty() {
+            println!("Cloning {} into {}", repo, path);
+        } else {
+            println!("Cloning into {}", repo);
+        }
         Command::new("gh")
-            .args(&["repo", "clone", owner_repo, repo])
+            .args(&["repo", "clone", owner_repo])
+            .arg(path)
             .arg("--")
             .args(&args_git)
             .output()?;
