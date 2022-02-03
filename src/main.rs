@@ -3,66 +3,16 @@ use regex::Regex;
 use skim::prelude::*;
 use std::io::Cursor;
 use std::process::Command;
+use git2::{Cred, RemoteCallbacks};
+use std::env;
+use std::path::Path;
 
 #[macro_use]
 extern crate serde_derive;
 extern crate serde;
 extern crate serde_json;
 
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct GhResponse {
-    // Many of these fields are here just in case I want to use them later but are currently
-    // redundant
-    name: String,
-    nameWithOwner: String,
-    updatedAt: String,
-    isPrivate: bool,
-    isArchived: bool,
-    isFork: bool,
-    isEmpty: bool,
-    description: String,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(transparent)]
-struct GhResponses {
-    responses: Vec<GhResponse>,
-}
-impl GhResponses {
-    fn get_output(&self, filter_flags: FilterFlags) -> String {
-        let mut return_string = String::new();
-        for gh_response in &self.responses {
-            if gh_response.isPrivate == filter_flags.only_private
-                || gh_response.isPrivate != filter_flags.only_public
-            {
-                let test = format!(
-                    "{: <30}   {} {}",
-                    gh_response.nameWithOwner.clone(),
-                    &gh_response.description,
-                    "\n",
-                );
-                return_string.push_str(&test)
-            }
-        }
-        return_string
-    }
-}
-
-struct FilterFlags {
-    only_private: bool,
-    only_public: bool,
-}
-impl Default for FilterFlags {
-    fn default() -> Self {
-        Self {
-            only_public: false,
-            only_private: false,
-        }
-    }
-}
-
-fn main() -> Result<(), std::io::Error> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create the app with arguments
     let matches = App::new("github-repo-clone")
         .version("0.1.2")
@@ -71,11 +21,10 @@ fn main() -> Result<(), std::io::Error> {
         .setting(clap::AppSettings::TrailingVarArg)
         .arg(
             Arg::new("owner")
-                .short('o')
-                .long("owner")
                 .about("The github owner to search though")
                 .required(false)
-                .takes_value(true),
+                .takes_value(true)
+                .index(1),
         )
         .arg(
             Arg::new("path")
@@ -103,7 +52,11 @@ fn main() -> Result<(), std::io::Error> {
                 .long("private")
                 .about("Show only private repositories"),
         )
-        .arg(Arg::new("git args").multiple_values(true))
+        .arg(
+            Arg::new("bare")
+            .long("bare")
+            .about("Whether to clone the repository as a bare repo"),
+        )
         .get_matches();
 
     // Parse the filter flags
@@ -172,12 +125,6 @@ fn main() -> Result<(), std::io::Error> {
         let owner_repo = &re_owner_repo.captures(&item.output()).unwrap()[0].to_string();
         let repo = &re_repo.captures(owner_repo).unwrap()[0].to_string()[1..];
 
-        // Get the git args
-        let args_git = match matches.values_of("git args") {
-            Some(args) => args.collect::<Vec<_>>(),
-            None => Vec::new(),
-        };
-
         // Parse the path flag
         //
         // This is a closure to check if the directory already exists
@@ -192,19 +139,87 @@ fn main() -> Result<(), std::io::Error> {
         };
         let path = match matches.value_of("path") {
             Some(path) => check_dir(path),
-            None => "".to_owned(),
+            None => repo.clone().to_string(),
         };
         if !path.is_empty() {
             println!("Cloning {} into {}", repo, path);
         } else {
             println!("Cloning into {}", repo);
         }
-        Command::new("gh")
-            .args(&["repo", "clone", owner_repo])
-            .arg(path)
-            .arg("--")
-            .args(&args_git)
-            .output()?;
+
+        // Prepare callbacks.
+        let mut callbacks = RemoteCallbacks::new();
+        callbacks.credentials(|_url, username_from_url, _allowed_types| {
+            dbg!(username_from_url);
+            Cred::ssh_key(
+                username_from_url.unwrap(),
+                None,
+                std::path::Path::new(&format!("{}/.ssh/id_rsa", env::var("HOME").unwrap())),
+                None,
+                )
+        });
+        // Prepare fetch options.
+        let mut fo = git2::FetchOptions::new();
+        fo.remote_callbacks(callbacks);
+
+        let url = format!("https://github.com/{}",owner_repo);
+        git2::build::RepoBuilder::new()
+        .fetch_options(fo)
+        .bare(matches.is_present("bare"))
+        .clone(&url, Path::new(&path))?;
     }
     Ok(())
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct GhResponse {
+    // Many of these fields are here just in case I want to use them later but are currently
+    // redundant
+    name: String,
+    nameWithOwner: String,
+    updatedAt: String,
+    isPrivate: bool,
+    isArchived: bool,
+    isFork: bool,
+    isEmpty: bool,
+    description: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(transparent)]
+struct GhResponses {
+    responses: Vec<GhResponse>,
+}
+impl GhResponses {
+    fn get_output(&self, filter_flags: FilterFlags) -> String {
+        let mut return_string = String::new();
+        for gh_response in &self.responses {
+            if gh_response.isPrivate == filter_flags.only_private
+                || gh_response.isPrivate != filter_flags.only_public
+            {
+                let test = format!(
+                    "{: <30}   {} {}",
+                    gh_response.nameWithOwner.clone(),
+                    &gh_response.description,
+                    "\n",
+                );
+                return_string.push_str(&test)
+            }
+        }
+        return_string
+    }
+}
+
+struct FilterFlags {
+    only_private: bool,
+    only_public: bool,
+}
+impl Default for FilterFlags {
+    fn default() -> Self {
+        Self {
+            only_public: false,
+            only_private: false,
+        }
+    }
 }
