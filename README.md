@@ -1,6 +1,6 @@
-# github-repo-clone (grc)
+# git-repo-clone (grc)
 
-Github Repo Clone is a command line utility written in rust that 
+Git Repo Clone is a command line utility written in rust that 
 leverages the power of fuzzy finding with the github cli
 
 # Usage
