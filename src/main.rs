@@ -96,7 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arg::new("limit")
                 .short('l')
                 .long("limit")
-                .help("The number of repositories to querry and list default=50")
+                .help("The number of repositories to querry and list default=30")
                 .takes_value(true),
         )
         .arg(
@@ -125,7 +125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .user_agent(APP_USER_AGENT)
         .build()?;
 
-    let limit = matches.value_of("limit").unwrap_or("50");
+    let limit = matches.value_of("limit").unwrap_or("30");
     let repo = matches.value_of("repository").unwrap_or("");
     let search_response: RepoInfos = if matches.is_present("repository")
         && !matches.is_present("owner")
