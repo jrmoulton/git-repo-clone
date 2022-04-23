@@ -165,7 +165,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         //     .short('h')
         //     .long("host")
         //     .help("Define which host provider to use. [Github, Gitlab] or full url"))
-        .arg(Arg::new("git args").multiple_values(true))
+        .arg(Arg::new("git args")
+            .multiple_values(true)
+        .help("All additional git args")
+            .long_help("All additional git args. After all other options pass `--` and then the git args. Eg `grc rust -- --bare")
+        )
+            
         .get_matches();
 
     let client = reqwest::blocking::Client::builder()

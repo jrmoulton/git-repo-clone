@@ -37,7 +37,7 @@ fn clone(owner_repo: &str, full_path: &Path, matches: &ArgMatches) -> Result<(),
         .arg("clone")
         .arg(url)
         .arg(full_path)
-        .arg("--")
+        // .arg("--")
         .args(git_args)
         .spawn();
 
