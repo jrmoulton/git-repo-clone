@@ -55,17 +55,6 @@ pub fn get_api_response(client: Client, url: String) -> Response {
     let intern_response: Response =
         serde_json::from_str(&client.get(url).send().unwrap().text().unwrap()).unwrap();
     intern_response
-    // let results = match intern_response {
-    //     Response::Direct(repos) => repos,
-    //     Response::Search(search_response) => search_response.items,
-    // };
-
-    // if results.repos.is_empty() {
-    //     println!("No search results found");
-    //     std::process::exit(1);
-    // } else {
-    //     results
-    // }
 }
 
 pub fn clone_all(
@@ -94,15 +83,15 @@ pub fn clone_all(
 pub fn get_repos(matches: &ArgMatches, client: Client, repo: &str) -> Vec<Arc<dyn SkimItem>> {
     let limit = matches.value_of("limit").unwrap_or("30");
 
-    if matches.is_present("owner search") {
+    if matches.is_present("owner search") && !matches.is_present("repository") {
         let search_owner = matches.value_of("owner search").unwrap();
         let users = match get_api_response(
             client.clone(),
             format!("https://api.github.com/search/users?q={search_owner}&per_page={limit}"),
         ) {
-            Response::Direct(_) => panic!(),
+            Response::Direct(_) => panic!("Should never happen"),
             Response::Search(search_response) => match search_response.items {
-                Infos::Repos(_) => panic!(),
+                Infos::Repos(_) => panic!("Should never happen"),
                 Infos::Users(users) => users,
             },
         };
@@ -111,7 +100,31 @@ pub fn get_repos(matches: &ArgMatches, client: Client, repo: &str) -> Vec<Arc<dy
             .to_string();
         let repos = match get_api_response(
             client,
-            format!("https://api.github.com/search/repositories?q={user}&per_page={limit}"),
+            format!("https://api.github.com/users/{user}/repos?per_page={limit}"),
+        ) {
+            Response::Direct(repos) => repos,
+            Response::Search(_) => panic!("This should never happen"),
+        };
+        get_fuzzy_result(repos.to_string())
+    } else if matches.is_present("owner search") && matches.is_present("repository") {
+        let search_owner = matches.value_of("owner search").unwrap();
+        let repo = matches.value_of("repository").unwrap();
+        let users = match get_api_response(
+            client.clone(),
+            format!("https://api.github.com/search/users?q={search_owner}&per_page={limit}"),
+        ) {
+            Response::Direct(_) => panic!("Should never happen"),
+            Response::Search(search_response) => match search_response.items {
+                Infos::Repos(_) => panic!("Should never happen"),
+                Infos::Users(users) => users,
+            },
+        };
+        let user = get_fuzzy_result(users.to_string().to_string())[0]
+            .output()
+            .to_string();
+        let repos = match get_api_response(
+            client,
+            format!("https://api.github.com/search/repositories?q={user}/{repo}&per_page={limit}"),
         ) {
             Response::Direct(_) => panic!("This should never happen"),
             Response::Search(search_response) => match search_response.items {
@@ -128,7 +141,7 @@ pub fn get_repos(matches: &ArgMatches, client: Client, repo: &str) -> Vec<Arc<dy
             Response::Direct(_) => panic!("This should never happen"),
             Response::Search(search_response) => match search_response.items {
                 Infos::Repos(repos) => repos,
-                Infos::Users(_) => panic!(),
+                Infos::Users(_) => panic!("Should never happen"),
             },
         };
         get_fuzzy_result(repos.to_string())
@@ -151,7 +164,7 @@ pub fn get_repos(matches: &ArgMatches, client: Client, repo: &str) -> Vec<Arc<dy
             Response::Direct(_) => panic!("This should never happen"),
             Response::Search(search_response) => match search_response.items {
                 Infos::Repos(repos) => repos,
-                Infos::Users(_) => panic!(),
+                Infos::Users(_) => panic!("Should never happen"),
             },
         };
         get_fuzzy_result(search_response.to_string())

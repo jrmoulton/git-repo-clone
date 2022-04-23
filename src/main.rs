@@ -1,4 +1,4 @@
-mod fuzzy;
+mod functions;
 
 use clap::{Arg, Command};
 
@@ -10,6 +10,7 @@ extern crate serde_json;
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
 #[derive(Deserialize, Debug)]
+#[serde(untagged)]
 pub enum Response {
     Direct(RepoInfos),
     Search(SearchResponse),
@@ -45,6 +46,7 @@ pub struct SearchResponse {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(untagged)]
 enum Infos {
     Users(UserInfos),
     Repos(RepoInfos),
@@ -160,13 +162,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     let repo = matches.value_of("repository").unwrap_or("");
-    let repos = fuzzy::get_repos(&matches, client, repo);
-
     let path = match matches.value_of("path") {
         Some(path) => check_dir(path, repo),
         None => repo.clone().to_string(),
     };
-    fuzzy::clone_all(repos, path, matches.is_present("bare"))
+
+    let repos = functions::get_repos(&matches, client, repo);
+    functions::clone_all(repos, path, matches.is_present("bare"))
 }
 
 // A function to check if the directory already exists I'm using this because I can't figure out
