@@ -1,16 +1,15 @@
 use clap::ArgMatches;
-use git2::{Cred, RemoteCallbacks};
 use regex::Regex;
 use reqwest::blocking::Client;
 use skim::prelude::*;
-use std::env;
 use std::error::Error;
 use std::io::Cursor;
 use std::path::Path;
+use std::{env, process::Command};
 
-use crate::{Infos, Response};
+use crate::{Defaults, Infos, Response};
 
-pub fn get_fuzzy_result(search_response: String) -> Vec<Arc<dyn SkimItem>> {
+fn get_fuzzy_result(search_response: String) -> Vec<Arc<dyn SkimItem>> {
     let options = SkimOptionsBuilder::default()
         .height(Some("50%"))
         .multi(false)
@@ -27,31 +26,28 @@ pub fn get_fuzzy_result(search_response: String) -> Vec<Arc<dyn SkimItem>> {
     skim_output.selected_items
 }
 
-pub fn clone(owner_repo: &str, path: String, bare: bool) -> Result<(), Box<dyn Error>> {
-    // Prepare callbacks.
-    let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(|_url, username_from_url, _allowed_types| {
-        dbg!(username_from_url);
-        Cred::ssh_key(
-            username_from_url.unwrap(),
-            None,
-            std::path::Path::new(&format!("{}/.ssh/id_rsa", env::var("HOME").unwrap())),
-            None,
-        )
-    });
-    // Prepare fetch options.
-    let mut fo = git2::FetchOptions::new();
-    fo.remote_callbacks(callbacks);
-
+fn clone(owner_repo: &str, full_path: &Path, matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let url = format!("https://github.com/{}", owner_repo);
-    git2::build::RepoBuilder::new()
-        .fetch_options(fo)
-        .bare(bare)
-        .clone(&url, Path::new(&path))?;
+
+    let git_args = match matches.values_of("git args") {
+        Some(args) => args.collect::<Vec<_>>(),
+        None => Vec::new(),
+    };
+    let command = Command::new("git")
+        .arg("clone")
+        .arg(url)
+        .arg(full_path)
+        .arg("--")
+        .args(git_args)
+        .spawn();
+
+    if let Ok(mut child) = command {
+        child.wait().expect("Child process wasn't running");
+    }
     Ok(())
 }
 
-pub fn get_api_response(client: Client, url: String) -> Response {
+fn get_api_response(client: Client, url: String) -> Response {
     let intern_response: Response =
         serde_json::from_str(&client.get(url).send().unwrap().text().unwrap()).unwrap();
     intern_response
@@ -59,29 +55,47 @@ pub fn get_api_response(client: Client, url: String) -> Response {
 
 pub fn clone_all(
     repos: Vec<Arc<dyn SkimItem>>,
-    path: String,
-    bare: bool,
+    matches: &ArgMatches,
+    defaults: Defaults,
 ) -> Result<(), Box<dyn Error>> {
+    let current_dir = env::current_dir().unwrap();
+    let mut path = matches.value_of("path").unwrap_or("").to_owned();
+    if path.is_empty() {
+        if let Some(defaults) = defaults.defaults {
+            if let Some(default_path) = defaults.clone_path {
+                path = default_path;
+                if path.contains('~') {
+                    panic!("Default path cannot contain a `~` ");
+                }
+            }
+        }
+    }
+    if path.is_empty() {
+        path = current_dir.to_str().unwrap().to_owned();
+    }
     // // For each item selected clone the repo with the github cli
     for item in repos.iter() {
         let re_owner_repo = Regex::new(r"[^\s]+").unwrap();
         let re_repo = Regex::new(r"/[^\s]+").unwrap();
         let owner_repo = &re_owner_repo.captures(&item.output()).unwrap()[0].to_string();
         let repo = &re_repo.captures(owner_repo).unwrap()[0].to_string()[1..];
-
-        if !path.is_empty() {
-            println!("Cloning {} into {}", repo, path);
-        } else {
-            println!("Cloning into {}", repo);
+        if path.chars().last().unwrap() == '/' {
+            path = path.chars().take(path.len() - 1).collect();
         }
+        let full_path = &format!("{path}/{repo}");
 
-        clone(owner_repo, path.clone(), bare)?
+        clone(owner_repo, &Path::new(full_path), matches)?
     }
     Ok(())
 }
 
-pub fn get_repos(matches: &ArgMatches, client: Client, repo: &str) -> Vec<Arc<dyn SkimItem>> {
+pub fn get_repos(
+    matches: &ArgMatches,
+    defaults: &Defaults,
+    client: Client,
+) -> Vec<Arc<dyn SkimItem>> {
     let limit = matches.value_of("limit").unwrap_or("30");
+    let repo = matches.value_of("repository").unwrap_or("");
 
     if matches.is_present("owner search") && !matches.is_present("repository") {
         let search_owner = matches.value_of("owner search").unwrap();
@@ -169,9 +183,16 @@ pub fn get_repos(matches: &ArgMatches, client: Client, repo: &str) -> Vec<Arc<dy
         };
         get_fuzzy_result(search_response.to_string())
     } else {
+        let default_username = match &defaults.defaults {
+            Some(defaults) => match &defaults.username {
+                Some(username) => username,
+                None => panic!("No default username provided. You must give something to search on. Check `grc --help` "),
+            },
+            None => panic!("No default username provided. You must give something to search on. Check `grc --help` "),
+        };
         let search_response = match get_api_response(
             client,
-            format!("https://api.github.com/users/jrmoulton/repos?per_page={limit}"),
+            format!("https://api.github.com/users/{default_username}/repos?per_page={limit}"),
         ) {
             Response::Direct(repos) => repos,
             Response::Search(_) => panic!("Expected repo list but got a search result"),

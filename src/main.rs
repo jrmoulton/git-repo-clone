@@ -11,7 +11,7 @@ static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_P
 
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
-pub enum Response {
+enum Response {
     Direct(RepoInfos),
     Search(SearchResponse),
 }
@@ -20,7 +20,7 @@ pub enum Response {
 // Vec<RepoInfo>
 #[derive(Deserialize, Debug)]
 #[serde(transparent)]
-pub struct RepoInfos {
+struct RepoInfos {
     repos: Vec<RepoInfo>,
 }
 impl ToString for RepoInfos {
@@ -39,7 +39,7 @@ impl ToString for RepoInfos {
 
 #[allow(dead_code)]
 #[derive(Deserialize, Debug)]
-pub struct SearchResponse {
+struct SearchResponse {
     total_count: i32,
     incomplete_results: bool,
     items: Infos,
@@ -90,16 +90,31 @@ struct UserInfo {
     html_url: String,
 }
 
+// TOML STUFF
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct Defaults {
+    defaults: Option<DefaultConfig>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct DefaultConfig {
+    clone_path: Option<String>,
+    username: Option<String>,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create the app with arguments
     let matches = Command::new("git-repo-clone")
-        .version("0.1.2")
+        .version("0.2.0")
         .author("Jared Moulton <jaredmoulton3@gmail.com>")
         .about("Mixes cloning git repositories with fuzzy finding to make cloning slightly more convenient")
+        .long_about("Mixes cloning git repositories with fuzzy finding to make cloning slightly more convenient. \n\nA user configuration file can be provided as ~/.config/grc/grc.toml with a default username and clone path")
         .trailing_var_arg(false)
         .arg(
             Arg::new("repository")
-                .help("The repository name to search for")
+                .help("The repository name to search for (not required)")
                 .required(false)
                 .takes_value(true),
         )
@@ -113,7 +128,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .arg(
             Arg::new("owner search")
-            .help("Search for an owner and get their repos")
+            .help("Search for an owner if the exact name isn't known and get their repos")
                 .long("ownersearch")
                 .short('O')
                 .conflicts_with("owner")
@@ -124,7 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arg::new("path")
                 .short('p')
                 .long("path")
-                .help("The full path to clone into")
+                .help("The full path to the parent folder to clone into")
                 .required(false)
                 .takes_value(true),
         )
@@ -132,51 +147,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arg::new("limit")
                 .short('l')
                 .long("limit")
-                .help("The number of repositories to querry and list default=30")
+                .help("The number of repositories to query and list: default=30")
                 .takes_value(true),
         )
-        .arg(
-            Arg::new("public")
-                .long("public")
-                .conflicts_with("private")
-                .help("Show only public repositories"),
-        )
-        .arg(
-            Arg::new("private")
-                .long("private")
-                .help("Show only private repositories"),
-        )
-        .arg(
-            Arg::new("bare")
-                .long("bare")
-                .help("Whether to clone the repository as a bare repo"),
-        )
-        .arg(Arg::new("host")
-            .short('h')
-            .long("host")
-            .help("Define which host provider to use. [Github, Gitlab] or full url"))
+        // .arg(
+        //     Arg::new("public")
+        //         .long("public")
+        //         .conflicts_with("private")
+        //         .help("Show only public repositories"),
+        // )
+        // .arg(
+        //     Arg::new("private")
+        //         .long("private")
+        //         .help("Show only private repositories"),
+        // )
+        // .arg(Arg::new("host")
+        //     .short('h')
+        //     .long("host")
+        //     .help("Define which host provider to use. [Github, Gitlab] or full url"))
+        .arg(Arg::new("git args").multiple_values(true))
         .get_matches();
 
     let client = reqwest::blocking::Client::builder()
         .user_agent(APP_USER_AGENT)
         .build()?;
 
-    let repo = matches.value_of("repository").unwrap_or("");
-    let path = match matches.value_of("path") {
-        Some(path) => check_dir(path, repo),
-        None => repo.clone().to_string(),
-    };
-
-    let repos = functions::get_repos(&matches, client, repo);
-    functions::clone_all(repos, path, matches.is_present("bare"))
-}
-
-// A function to check if the directory already exists I'm using this because I can't figure out
-// how to use if statements inside of the match arm
-fn check_dir(path: &str, repo: &str) -> String {
-    if std::path::Path::new(&path).is_dir() {
-        format!("{}/{}", path.trim_end_matches('/'), repo)
-    } else {
-        path.to_owned()
-    }
+    let defaults: Defaults = toml::from_str(
+        &std::fs::read_to_string(format!("/Users/jaredmoulton/.config/grc/grc.toml")).unwrap(),
+    )
+    .unwrap();
+    let repos = functions::get_repos(&matches, &defaults, client);
+    functions::clone_all(repos, &matches, defaults)
 }

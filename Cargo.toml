@@ -1,6 +1,6 @@
 [package]
-name = "github-repo-clone"
-version = "0.1.2"
+name = "git-repo-clone"
+version = "0.2.0"
 edition = "2021"
 
 [[bin]]
@@ -16,8 +16,8 @@ regex = "1.5"
 serde = "*"
 serde_json = "*"
 serde_derive = "*"
-git2 = "0.13.25"
 reqwest = { version = "0.11", features = ["blocking"] }
+toml = "0.5"
 
 [profile.release]
 debug = true
