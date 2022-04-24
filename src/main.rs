@@ -104,6 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .author("Jared Moulton <jaredmoulton3@gmail.com>")
         .about("Mixes cloning git repositories with fuzzy finding to make cloning slightly more convenient")
         .trailing_var_arg(false)
+        .disable_help_subcommand(true)
         .arg(
             Arg::new("repository")
                 .help("The repository name to search for")
@@ -162,7 +163,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .help("All additional git args")
             .long_help("All additional git args. After all other options pass `--` and then the git args. Eg `grc rust -- --bare")
         )
-        .subcommand(Command::new("config")
+        .subcommand(Command::new("default-config")
             .args_conflicts_with_subcommands(true)
             .about("Configure your defaults")
             .arg(Arg::new("username")
