@@ -168,12 +168,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .about("Configure your defaults")
             .arg(Arg::new("username")
                 .takes_value(true)
+                .required(true)
                 .short('u')
                 .long("username")
                 .help("The default username to search for when no other search parameters are given")
             )
             .arg(Arg::new("clone path")
                 .takes_value(true)
+                .required(true)
                 .short('p')
                 .long("path")
                 .help("The default path to clone repositories into when none is specified. \
@@ -183,7 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .get_matches();
 
     match matches.subcommand() {
-        Some(("config", sub_m)) => {
+        Some(("default-config", sub_m)) => {
             let username = match sub_m.value_of("username") {
                 Some(name) => Some(name.to_string()),
                 None => None,
