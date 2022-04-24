@@ -113,6 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .disable_help_subcommand(true)
         .arg(
             Arg::new("repository")
+                .allow_hyphen_values(false)
                 .help("The repository name to search for")
                 .takes_value(true),
         )
@@ -130,7 +131,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .short('O')
                 .conflicts_with("owner")
                 .takes_value(true)
-                .required(false)
         )
         .arg(
             Arg::new("path")
@@ -155,7 +155,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .arg(Arg::new("git args")
             .multiple_values(true)
-            .help("All additional git args. After all other options pass `--` and then the git args. Eg `grc rust -- --bare")
+            .allow_hyphen_values(true)
+            .takes_value(true)
+            .long("git")
+            .short('g')
+            .help("All additional git args. After all other options pass `-g` and then the git args. \
+                Eg `grc rust -g --bare` ")
         )
         .subcommand(Command::new("default-config")
             .args_conflicts_with_subcommands(true)

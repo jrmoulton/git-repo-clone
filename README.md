@@ -16,14 +16,14 @@ finding on those results.
 Git must be installed. Use `grc --help`
 ```
 USAGE:
-    grc [OPTIONS] [ARGS] [SUBCOMMAND]
+    grc [OPTIONS] [repository] [SUBCOMMAND]
 
 ARGS:
-    <repository>     The repository name to search for
-    <git args>...    All additional git args. After all other options pass `--` and then the git
-                     args. Eg `grc rust -- --bare
+    <repository>    The repository name to search for
 
 OPTIONS:
+    -g, --git <git args>...             All additional git args. After all other options pass `-g`
+                                        and then the git args. Eg `grc rust -g --bare`
     -h, --help                          Print help information
     -l, --limit <limit>                 The number of repositories to query and list: default=30
     -n, --new <new name>                A custom name for renaming the repository
