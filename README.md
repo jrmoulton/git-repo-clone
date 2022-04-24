@@ -9,7 +9,7 @@ on the Github API. This allows for finding the exact repository you're looking
 for even if you don't know the exact name of the repo or owner and then fuzzing
 finding on those results.
 
-![grc-gif](images/grc-gif-v0.1.2.gif)
+![grc-gif](images/grc-gif-0.2.0.gif)
 
 ## Usage
 
