@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .trailing_var_arg(false)
         .arg(
             Arg::new("repository")
-                .help("The repository name to search for (not required)")
+                .help("The repository name to search for")
                 .required(false)
                 .takes_value(true),
         )
@@ -163,6 +163,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .long_help("All additional git args. After all other options pass `--` and then the git args. Eg `grc rust -- --bare")
         )
         .subcommand(Command::new("config")
+            .args_conflicts_with_subcommands(true)
             .about("Configure your defaults")
             .arg(Arg::new("username")
                 .takes_value(true)
