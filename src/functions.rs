@@ -7,7 +7,7 @@ use std::io::Cursor;
 use std::path::Path;
 use std::{env, process::Command};
 
-use crate::{Defaults, Infos, Response};
+use crate::{DefaultConfig, Infos, Response};
 
 fn get_fuzzy_result(search_response: String) -> Vec<Arc<dyn SkimItem>> {
     let options = SkimOptionsBuilder::default()
@@ -37,7 +37,6 @@ fn clone(owner_repo: &str, full_path: &Path, matches: &ArgMatches) -> Result<(),
         .arg("clone")
         .arg(url)
         .arg(full_path)
-        // .arg("--")
         .args(git_args)
         .spawn();
 
@@ -48,25 +47,31 @@ fn clone(owner_repo: &str, full_path: &Path, matches: &ArgMatches) -> Result<(),
 }
 
 fn get_api_response(client: Client, url: String) -> Response {
-    let intern_response: Response =
-        serde_json::from_str(&client.get(url).send().unwrap().text().unwrap()).unwrap();
-    intern_response
+    Response::from(
+        serde_json::from_str(
+            &client
+                .get(url)
+                .send()
+                .expect("Unable to send request")
+                .text()
+                .expect("Unable to decode the response"),
+        )
+        .expect("The response was not in the correct form. This should only happen if the github rest api changes"),
+    )
 }
 
 pub fn clone_all(
     repos: Vec<Arc<dyn SkimItem>>,
     matches: &ArgMatches,
-    defaults: Defaults,
+    defaults: DefaultConfig,
 ) -> Result<(), Box<dyn Error>> {
     let current_dir = env::current_dir().unwrap();
     let mut path = matches.value_of("path").unwrap_or("").to_owned();
     if path.is_empty() {
-        if let Some(defaults) = defaults.defaults {
-            if let Some(default_path) = defaults.clone_path {
-                path = default_path;
-                if path.contains('~') {
-                    panic!("Default path cannot contain a `~` ");
-                }
+        if let Some(default_path) = defaults.clone_path {
+            path = default_path;
+            if path.contains('~') {
+                panic!("Default path cannot contain a `~` ");
             }
         }
     }
@@ -91,7 +96,7 @@ pub fn clone_all(
 
 pub fn get_repos(
     matches: &ArgMatches,
-    defaults: &Defaults,
+    defaults: &DefaultConfig,
     client: Client,
 ) -> Vec<Arc<dyn SkimItem>> {
     let limit = matches.value_of("limit").unwrap_or("30");
@@ -183,12 +188,9 @@ pub fn get_repos(
         };
         get_fuzzy_result(search_response.to_string())
     } else {
-        let default_username = match &defaults.defaults {
-            Some(defaults) => match &defaults.username {
+        let default_username = match &defaults.username {
                 Some(username) => username,
-                None => panic!("No default username provided. You must give something to search on. Check `grc --help` "),
-            },
-            None => panic!("No default username provided. You must give something to search on. Check `grc --help` "),
+                None => panic!("No default username provided. You must give a search parameter or configure the defaults in the config file. Check `grc --help` "),
         };
         let search_response = match get_api_response(
             client,

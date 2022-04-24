@@ -90,16 +90,9 @@ struct UserInfo {
     html_url: String,
 }
 
-// TOML STUFF
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-pub struct Defaults {
-    defaults: Option<DefaultConfig>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct DefaultConfig {
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct DefaultConfig {
     clone_path: Option<String>,
     username: Option<String>,
 }
@@ -110,7 +103,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .version("0.2.0")
         .author("Jared Moulton <jaredmoulton3@gmail.com>")
         .about("Mixes cloning git repositories with fuzzy finding to make cloning slightly more convenient")
-        .long_about("Mixes cloning git repositories with fuzzy finding to make cloning slightly more convenient. \n\nA user configuration file can be provided as ~/.config/grc/grc.toml with a default username and clone path")
         .trailing_var_arg(false)
         .arg(
             Arg::new("repository")
@@ -167,20 +159,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         //     .help("Define which host provider to use. [Github, Gitlab] or full url"))
         .arg(Arg::new("git args")
             .multiple_values(true)
-        .help("All additional git args")
+            .help("All additional git args")
             .long_help("All additional git args. After all other options pass `--` and then the git args. Eg `grc rust -- --bare")
         )
-            
+        .subcommand(Command::new("config")
+            .about("Configure your defaults")
+            .arg(Arg::new("username")
+                .takes_value(true)
+                .short('u')
+                .long("username")
+                .help("The default username to search for when no other search parameters are given")
+            )
+            .arg(Arg::new("clone path")
+                .takes_value(true)
+                .short('p')
+                .long("path")
+                .help("The default path to clone repositories into when none is specified. \
+                        If this is blank and none is specified it will clone into the current folder")
+            )
+        )
         .get_matches();
+
+    match matches.subcommand() {
+        Some(("config", sub_m)) => {
+            let username = match sub_m.value_of("username") {
+                Some(name) => Some(name.to_string()),
+                None => None,
+            };
+            let clone_path = match sub_m.value_of("clone path") {
+                Some(path) => Some(path.to_string()),
+                None => None,
+            };
+            let config = DefaultConfig {
+                username,
+                clone_path,
+            };
+            confy::store("grc", config)?;
+            println!("Configuration has been stored");
+            std::process::exit(0);
+        }
+        _ => {}
+    }
 
     let client = reqwest::blocking::Client::builder()
         .user_agent(APP_USER_AGENT)
         .build()?;
 
-    let defaults: Defaults = toml::from_str(
-        &std::fs::read_to_string(format!("/Users/jaredmoulton/.config/grc/grc.toml")).unwrap(),
-    )
-    .unwrap();
+    let defaults: DefaultConfig = confy::load("grc").unwrap();
     let repos = functions::get_repos(&matches, &defaults, client);
     functions::clone_all(repos, &matches, defaults)
 }
