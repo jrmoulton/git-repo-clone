@@ -1,13 +1,24 @@
 [package]
 name = "git-repo-clone"
 version = "0.2.0"
+authors = ["Jared Moulton <jaredmoulton3@gmail.com>"]
 edition = "2021"
+license = "MIT"
+description = """
+Git Repo Clone is a command line utility written in rust that leverages the
+power of fuzzy finding with searching git hosts
+"""
+homepage = "https://github.com/jrmoulton/git-repo-clone"
+repository = "https://github.com/jrmoulton/git-repo-clone"
+documentation  = "https://docs.rs/crate/git-repo-clone/latest"
+keyword = ["git", "clone", "fuzzy", "github"]
+exclude = [
+    "images/*"
+]
 
 [[bin]]
 name = "grc"
 path = "src/main.rs"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 clap = "3.1.9"

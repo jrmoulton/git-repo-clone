@@ -1,6 +1,12 @@
-mod functions;
-
+use clap::ArgMatches;
 use clap::{Arg, Command};
+use regex::Regex;
+use reqwest::blocking::Client;
+use skim::prelude::*;
+use std::error::Error;
+use std::io::Cursor;
+use std::path::Path;
+use std::{env, process};
 
 #[macro_use]
 extern crate serde_derive;
@@ -92,7 +98,7 @@ struct UserInfo {
 
 #[allow(dead_code)]
 #[derive(Debug, Default, Deserialize, Serialize)]
-pub struct DefaultConfig {
+struct DefaultConfig {
     clone_path: Option<String>,
     username: Option<String>,
 }
@@ -108,7 +114,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(
             Arg::new("repository")
                 .help("The repository name to search for")
-                .required(false)
                 .takes_value(true),
         )
         .arg(
@@ -116,7 +121,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .short('o')
                 .long("owner")
                 .help("The owner account to search through")
-                .required(false)
                 .takes_value(true),
         )
         .arg(
@@ -133,7 +137,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .short('p')
                 .long("path")
                 .help("The full path to the parent folder to clone into")
-                .required(false)
                 .takes_value(true),
         )
         .arg(
@@ -143,25 +146,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .help("The number of repositories to query and list: default=30")
                 .takes_value(true),
         )
-        // .arg(
-        //     Arg::new("public")
-        //         .long("public")
-        //         .conflicts_with("private")
-        //         .help("Show only public repositories"),
-        // )
-        // .arg(
-        //     Arg::new("private")
-        //         .long("private")
-        //         .help("Show only private repositories"),
-        // )
-        // .arg(Arg::new("host")
-        //     .short('h')
-        //     .long("host")
-        //     .help("Define which host provider to use. [Github, Gitlab] or full url"))
+            .arg(
+            Arg::new("new name")
+                .short('n')
+                .long("new")
+                .help("A custom name for renaming the repository")
+                .takes_value(true)
+        )
         .arg(Arg::new("git args")
             .multiple_values(true)
-            .help("All additional git args")
-            .long_help("All additional git args. After all other options pass `--` and then the git args. Eg `grc rust -- --bare")
+            .help("All additional git args. After all other options pass `--` and then the git args. Eg `grc rust -- --bare")
         )
         .subcommand(Command::new("default-config")
             .args_conflicts_with_subcommands(true)
@@ -210,6 +204,205 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     let defaults: DefaultConfig = confy::load("grc").unwrap();
-    let repos = functions::get_repos(&matches, &defaults, client);
-    functions::clone_all(repos, &matches, defaults)
+    let repos = get_repos(&matches, &defaults, client);
+    clone_all(repos, &matches, defaults)
+}
+
+fn get_fuzzy_result(search_response: String) -> Vec<Arc<dyn SkimItem>> {
+    let options = SkimOptionsBuilder::default()
+        .height(Some("50%"))
+        .multi(false)
+        .color(Some("bw"))
+        .build()
+        .unwrap();
+    let item_reader = SkimItemReader::default();
+    let item = item_reader.of_bufread(Cursor::new(search_response.to_string()));
+    let skim_output = Skim::run_with(&options, Some(item)).unwrap();
+    if skim_output.is_abort {
+        println!("No selection made");
+        std::process::exit(1);
+    }
+    skim_output.selected_items
+}
+
+fn clone(owner_repo: &str, full_path: &Path, matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let url = format!("https://github.com/{}", owner_repo);
+
+    let git_args = match matches.values_of("git args") {
+        Some(args) => args.collect::<Vec<_>>(),
+        None => Vec::new(),
+    };
+    let command = process::Command::new("git")
+        .arg("clone")
+        .arg(url)
+        .arg(full_path)
+        .args(git_args)
+        .spawn();
+
+    if let Ok(mut child) = command {
+        child.wait().expect("Child process wasn't running");
+    }
+    Ok(())
+}
+
+fn get_api_response(client: Client, url: String) -> Response {
+    Response::from(
+        serde_json::from_str(
+            &client
+                .get(url)
+                .send()
+                .expect("Unable to send request")
+                .text()
+                .expect("Unable to decode the response"),
+        )
+        .expect("The response was not in the correct form. This should only happen if the github rest api changes"),
+    )
+}
+
+fn clone_all(
+    repos: Vec<Arc<dyn SkimItem>>,
+    matches: &ArgMatches,
+    defaults: DefaultConfig,
+) -> Result<(), Box<dyn Error>> {
+    let current_dir = env::current_dir().unwrap();
+    let mut path = matches.value_of("path").unwrap_or("").to_owned();
+    if path.is_empty() {
+        if let Some(default_path) = defaults.clone_path {
+            path = default_path;
+            if path.contains('~') {
+                panic!("Default path cannot contain a `~` ");
+            }
+        }
+    }
+    if path.is_empty() {
+        path = current_dir.to_str().unwrap().to_owned();
+    }
+    // // For each item selected clone the repo with the github cli
+    for item in repos.iter() {
+        let re_owner_repo = Regex::new(r"[^\s]+").unwrap();
+        let re_repo = Regex::new(r"/[^\s]+").unwrap();
+
+        let owner_repo = &re_owner_repo.captures(&item.output()).unwrap()[0].to_string();
+        let repo = match matches.value_of("new") {
+            Some(name) => name.to_owned(),
+            None => re_repo.captures(owner_repo).unwrap()[0].to_string()[1..].to_owned(),
+        };
+
+        if path.chars().last().unwrap() == '/' {
+            path = path.chars().take(path.len() - 1).collect();
+        }
+        let full_path = &format!("{path}/{repo}");
+
+        clone(owner_repo, &Path::new(full_path), matches)?
+    }
+    Ok(())
+}
+
+fn get_repos(
+    matches: &ArgMatches,
+    defaults: &DefaultConfig,
+    client: Client,
+) -> Vec<Arc<dyn SkimItem>> {
+    let limit = matches.value_of("limit").unwrap_or("30");
+    let repo = matches.value_of("repository").unwrap_or("");
+
+    if matches.is_present("owner search") && !matches.is_present("repository") {
+        let search_owner = matches.value_of("owner search").unwrap();
+        let users = match get_api_response(
+            client.clone(),
+            format!("https://api.github.com/search/users?q={search_owner}&per_page={limit}"),
+        ) {
+            Response::Direct(_) => panic!("Should never happen"),
+            Response::Search(search_response) => match search_response.items {
+                Infos::Repos(_) => panic!("Should never happen"),
+                Infos::Users(users) => users,
+            },
+        };
+        let user = get_fuzzy_result(users.to_string().to_string())[0]
+            .output()
+            .to_string();
+        let repos = match get_api_response(
+            client,
+            format!("https://api.github.com/users/{user}/repos?per_page={limit}"),
+        ) {
+            Response::Direct(repos) => repos,
+            Response::Search(_) => panic!("This should never happen"),
+        };
+        get_fuzzy_result(repos.to_string())
+    } else if matches.is_present("owner search") && matches.is_present("repository") {
+        let search_owner = matches.value_of("owner search").unwrap();
+        let repo = matches.value_of("repository").unwrap();
+        let users = match get_api_response(
+            client.clone(),
+            format!("https://api.github.com/search/users?q={search_owner}&per_page={limit}"),
+        ) {
+            Response::Direct(_) => panic!("Should never happen"),
+            Response::Search(search_response) => match search_response.items {
+                Infos::Repos(_) => panic!("Should never happen"),
+                Infos::Users(users) => users,
+            },
+        };
+        let user = get_fuzzy_result(users.to_string().to_string())[0]
+            .output()
+            .to_string();
+        let repos = match get_api_response(
+            client,
+            format!("https://api.github.com/search/repositories?q={user}/{repo}&per_page={limit}"),
+        ) {
+            Response::Direct(_) => panic!("This should never happen"),
+            Response::Search(search_response) => match search_response.items {
+                Infos::Repos(repos) => repos,
+                Infos::Users(_) => panic!(),
+            },
+        };
+        get_fuzzy_result(repos.to_string())
+    } else if matches.is_present("repository") && !matches.is_present("owner") {
+        let repos = match get_api_response(
+            client,
+            format!("https://api.github.com/search/repositories?q={repo}&per_page={limit}"),
+        ) {
+            Response::Direct(_) => panic!("This should never happen"),
+            Response::Search(search_response) => match search_response.items {
+                Infos::Repos(repos) => repos,
+                Infos::Users(_) => panic!("Should never happen"),
+            },
+        };
+        get_fuzzy_result(repos.to_string())
+    } else if matches.is_present("owner") && !matches.is_present("repository") {
+        let owner = matches.value_of("owner").unwrap();
+        let search_response = match get_api_response(
+            client,
+            format!("https://api.github.com/users/{owner}/repos?per_page={limit}"),
+        ) {
+            Response::Direct(repos) => repos,
+            Response::Search(_) => panic!("Expected repo list but got a search result"),
+        };
+        get_fuzzy_result(search_response.to_string())
+    } else if matches.is_present("owner") && matches.is_present("repository") {
+        let owner = matches.value_of("owner").unwrap();
+        let search_response = match get_api_response(
+            client,
+            format!("https://api.github.com/search/repositories?q={owner}/{repo}&per_page={limit}"),
+        ) {
+            Response::Direct(_) => panic!("This should never happen"),
+            Response::Search(search_response) => match search_response.items {
+                Infos::Repos(repos) => repos,
+                Infos::Users(_) => panic!("Should never happen"),
+            },
+        };
+        get_fuzzy_result(search_response.to_string())
+    } else {
+        let default_username = match &defaults.username {
+                Some(username) => username,
+                None => panic!("No default username provided. You must give a search parameter or configure the defaults in the config file. Check `grc --help` "),
+        };
+        let search_response = match get_api_response(
+            client,
+            format!("https://api.github.com/users/{default_username}/repos?per_page={limit}"),
+        ) {
+            Response::Direct(repos) => repos,
+            Response::Search(_) => panic!("Expected repo list but got a search result"),
+        };
+        get_fuzzy_result(search_response.to_string())
+    }
 }
