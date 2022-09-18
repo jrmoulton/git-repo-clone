@@ -10,7 +10,7 @@ for even if you don't know the exact name of the repo or owner and then fuzzing
 finding on those results.
 
 ![grc-gif](images/grc-gif-0.2.0.gif)
-(Note: The gif is out of date. The way to pass git flags is now by prefacing them wiht `-g` as shown in the help menu)
+(Note: The gif is out of date. The way to pass git flags is now by prefacing them with `-g` as shown in the help menu)
 
 ## Usage
 
